@@ -1,0 +1,123 @@
+<form class="scene-optimizer" autocomplete="off">
+    <div class="instructions">
+        <p>Select scenes to convert their background images to WebP (Quality 0.85).</p>
+        <p class="notes"><i class="fas fa-exclamation-triangle"></i> Original files are NOT deleted.</p>
+    </div>
+
+    <nav class="sheet-tabs tabs" data-group="primary">
+        <a class="item" data-tab="scenes"><i class="fas fa-image"></i> Scenes</a>
+        <a class="item" data-tab="audio"><i class="fas fa-music"></i> Audio</a>
+    </nav>
+
+    <!-- SCENES TAB -->
+    <div class="tab" data-tab="scenes">
+        <div class="scene-list-header">
+            <div class="scene-check">
+                <input type="checkbox" id="select-all-scenes" title="Select All Unoptimized" />
+            </div>
+            <div class="scene-name">Scene Name</div>
+            <div class="scene-format">Format</div>
+            <div class="scene-path">Path</div>
+        </div>
+
+        <div class="scene-list">
+            {{#each scenes}}
+            <div class="scene-row {{this.statusClass}}">
+                <div class="scene-check">
+                    <input type="checkbox" name="sceneIds" value="{{this.id}}" {{#if this.checked}}checked{{/if}} {{#if
+                        this.isOptimized}}disabled{{/if}} />
+                </div>
+                <div class="scene-name" title="{{this.name}}">{{this.name}}</div>
+                <div class="scene-format">{{this.format}}</div>
+                <div class="scene-path" title="{{this.path}}">{{this.path}}</div>
+            </div>
+            {{else}}
+            <div class="scene-row">
+                <p>No scenes found.</p>
+            </div>
+            {{/each}}
+        </div>
+        <div class="settings-inline"
+            style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.2);">
+            <div class="setting-group">
+                <label for="quality-slider">Image Quality: <span id="quality-display">0.85</span></label>
+                <div class="slider-container">
+                    <input type="range" id="quality-slider" name="quality" min="0.1" max="1.0" step="0.05" value="0.85">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUDIO TAB -->
+    <div class="tab" data-tab="audio">
+        <div class="scene-list-header">
+            <div class="scene-check">
+                <input type="checkbox" id="select-all-audio" title="Select All Unoptimized" />
+            </div>
+            <div class="scene-name">Source</div>
+            <div class="scene-format">Type</div>
+            <div class="scene-path">Path</div>
+        </div>
+
+        <div class="scene-list">
+            {{#each audio}}
+            <div class="scene-row {{this.statusClass}}">
+                <div class="scene-check">
+                    <input type="checkbox" name="audioIds" value="{{this.uniqueId}}" {{#if this.checked}}checked{{/if}}
+                        {{#if this.isOptimized}}disabled{{/if}} />
+                </div>
+                <div class="scene-name" title="{{this.name}}">
+                    <span class="audio-parent">[{{this.parentName}}]</span> {{this.name}}
+                </div>
+                <div class="scene-format">{{this.format}}</div>
+                <div class="scene-path" title="{{this.path}}">{{this.path}}</div>
+            </div>
+            {{else}}
+            <div class="scene-row">
+                <p>No audio sources found.</p>
+            </div>
+            {{/each}}
+        </div>
+
+        <div class="settings-inline"
+            style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.2);">
+            <div class="setting-group">
+                <label for="audio-bitrate-audio">Audio Bitrate (kbps):</label>
+                <select id="audio-bitrate-audio" name="audioBitrateAudio" class="audio-bitrate-sync">
+                    <option value="64000">64 kbps (Voice)</option>
+                    <option value="96000">96 kbps (Standard)</option>
+                    <option value="128000" selected>128 kbps (High)</option>
+                    <option value="192000">192 kbps (Very High)</option>
+                    <option value="256000">256 kbps (Maximum)</option>
+                </select>
+            </div>
+        </div>
+
+        <p class="notes" style="margin-top: 10px; font-size: 0.8em; color: #888;">
+            <i class="fas fa-bolt"></i> Audio conversion uses <strong>native acceleration</strong> for high-speed
+            offline processing.
+        </p>
+    </div>
+
+    <div class="progress-container" style="display: {{#if isOptimizing}}block{{else}}none{{/if}};">
+        <label>{{progressLabel}}</label>
+        <progress value="{{progressValue}}" max="{{progressMax}}"></progress>
+    </div>
+
+    {{#if orphanedFiles.length}}
+    <div class="orphan-report">
+        <h4><i class="fas fa-info-circle"></i> Optimization Complete</h4>
+        <p>The following original files are now unused and can be manually deleted:</p>
+        <ul class="orphan-list">
+            {{#each orphanedFiles}}
+            <li>{{this}}</li>
+            {{/each}}
+        </ul>
+    </div>
+    {{/if}}
+
+    <div class="controls">
+        <button type="button" data-action="analyze"><i class="fas fa-search"></i> Analyze / Refresh</button>
+        <button type="submit" data-action="optimize"><i class="fas fa-magic"></i> Optimize Selected</button>
+    </div>
+</form>
