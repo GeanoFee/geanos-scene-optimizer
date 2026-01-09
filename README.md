@@ -3,7 +3,7 @@
 **Geano's Scene Optimizer** is a powerful Foundry VTT module that optimizes your world's assets for maximum performance. It converts heavy background images to **WebP** and bulky audio files to efficient **OGG (Opus)**, significantly reducing load times and bandwidth usage for you and your players.
 
 
-## Features
+## ✨ Features
 
 ### 🎨 Scene Optimization (Images)
 *   **Format Detection**: Identifies scenes using unoptimized formats (PNG, JPG, JPEG).
@@ -21,7 +21,7 @@
 *   **Smart Filenaming**: Handles filenames with spaces and special characters perfectly.
 *   **Progress Feedback**: Real-time progress bar with streaming updates for large files.
 
-## Installation
+## 🚀 Installation
 
 1.  Download the latest release.
 2.  Unzip the content into your Foundry VTT `Data/modules/` directory.
@@ -30,7 +30,7 @@
 Alternatively:
 Enter the Manifest URL `https://github.com/GeanoFee/geanos-scene-optimizer/releases/latest/download/module.json` within Foundry's "Install Module" window.
 
-## Usage
+## 🎮 Usage
 
 1.  Navigate to the **Scenes Directory** sidebar.
 2.  Click the **"Optimize Scenes"** button in the header (or right-click any Scene/Folder).
@@ -45,11 +45,12 @@ Enter the Manifest URL `https://github.com/GeanoFee/geanos-scene-optimizer/relea
 7.  **Wait**: A progress bar will show the conversion status. Large audio files may take a moment but will update in real-time.
 8.  **Done**: Your world is now faster!
 
-## Technical Details
+## 🔧 Technical Details
 
 *   **Images**: Converted using HTML5 Canvas `toBlob("image/webp")`.
 *   **Audio**: Converted using `AudioDecoder` -> `AudioEncoder` (Opus) -> `OggOpusMuxer` (Custom JS implementation).
 *   **Streaming**: Audio is processed in chunks to prevent browser freezing, even for hour-long files.
+
 
 
 
