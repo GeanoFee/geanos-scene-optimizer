@@ -46,7 +46,6 @@
 *   **Audio**: Converted using `AudioDecoder` -> `AudioEncoder` (Opus) -> `OggOpusMuxer` (Custom JS implementation).
 *   **Streaming**: Audio is processed in chunks to prevent browser freezing, even for hour-long files.
 
-
-
-
-
+---
+## License
+This module is licensed under the [MIT License](LICENSE).
