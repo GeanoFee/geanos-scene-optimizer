@@ -153,3 +153,4 @@
     padding: 0;
     margin: 0;
 }
+.scene-optimizer .tab:not(.active) { display: none; }

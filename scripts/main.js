@@ -1,29 +1,53 @@
 import { OggOpusMuxer } from "./ogg-muxer.js";
 
-class SceneOptimizer extends FormApplication {
-    constructor() {
-        super();
+const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
+
+class SceneOptimizer extends HandlebarsApplicationMixin(ApplicationV2) {
+    constructor(options = {}) {
+        super(options);
         this.scenesData = [];
-        this.audioData = []; // New Store for audio
+        this.audioData = [];
         this.orphanedFiles = [];
         this.isOptimizing = false;
+
+        // Progress state
         this.progress = { value: 0, max: 0, label: "" };
+
+        // Tab state
+        this.tabState = "scenes";
     }
 
-    static get defaultOptions() {
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "geanos-scene-optimizer",
+    static DEFAULT_OPTIONS = {
+        id: "geanos-scene-optimizer",
+        tag: "form", // The app itself is the form
+        window: {
             title: "Geano's Scene Optimizer",
-            template: "modules/geanos-scene-optimizer/templates/optimizer.hbs",
-            width: 700, // Slightly wider for tabs
-            height: "auto",
-            resizable: true,
-            closeOnSubmit: false,
-            tabs: [{ navSelector: ".sheet-tabs", contentSelector: "form", initial: "scenes" }] // Activate Tabs
-        });
-    }
+            icon: "fas fa-magic",
+            startWith: 700,
+            contentClasses: ["scene-optimizer-window"]
+        },
+        position: {
+            width: 700,
+            height: "auto"
+        },
+        form: {
+            handler: SceneOptimizer.prototype._onSubmit,
+            closeOnSubmit: false
+        },
+        actions: {
+            analyze: SceneOptimizer.prototype._onAnalyze,
+            optimize: SceneOptimizer.prototype._onOptimizeClick,
+            changeTab: SceneOptimizer.prototype._onChangeTab
+        }
+    };
 
-    async getData() {
+    static PARTS = {
+        form: {
+            template: "modules/geanos-scene-optimizer/templates/optimizer.hbs"
+        }
+    };
+
+    async _prepareContext(options) {
         // Refresh data if empty
         if (this.scenesData.length === 0) {
             this.scenesData = this._analyzeScenes();
@@ -39,9 +63,124 @@ class SceneOptimizer extends FormApplication {
             isOptimizing: this.isOptimizing,
             progressValue: this.progress.value,
             progressMax: this.progress.max,
-            progressLabel: this.progress.label
+            progressLabel: this.progress.label,
+            // Context for tab state
+            activeTab: this.tabState,
+            isScenesTab: this.tabState === "scenes",
+            isAudioTab: this.tabState === "audio"
         };
     }
+
+    _onRender(context, options) {
+        // Handle "Select All" checkboxes manually as they are UI-only interactions
+        const html = this.element;
+
+        const selectAllScenes = html.querySelector('#select-all-scenes');
+        if (selectAllScenes) {
+            selectAllScenes.addEventListener('change', (event) => {
+                const checked = event.currentTarget.checked;
+                const checkboxes = html.querySelectorAll(".tab[data-tab='scenes'] .scene-row.unoptimized input[type='checkbox']");
+                checkboxes.forEach(cb => cb.checked = checked);
+            });
+        }
+
+        const selectAllAudio = html.querySelector('#select-all-audio');
+        if (selectAllAudio) {
+            selectAllAudio.addEventListener('change', (event) => {
+                const checked = event.currentTarget.checked;
+                const checkboxes = html.querySelectorAll(".tab[data-tab='audio'] .scene-row.unoptimized input[type='checkbox']");
+                checkboxes.forEach(cb => cb.checked = checked);
+            });
+        }
+
+        // Slider Reactivity (Visual only)
+        const rangeInput = html.querySelector('#quality-slider');
+        const rangeDisplay = html.querySelector('#quality-display');
+        if (rangeInput && rangeDisplay) {
+            rangeInput.addEventListener('input', (event) => {
+                rangeDisplay.textContent = event.target.value;
+            });
+        }
+    }
+
+    // --- Actions ---
+
+    async _onChangeTab(event, target) {
+        this.tabState = target.dataset.tab;
+        this.render();
+    }
+
+    async _onAnalyze(event, target) {
+        if (this.isOptimizing) return;
+        this.scenesData = this._analyzeScenes();
+        this.audioData = this._analyzeAudio();
+        this.render();
+    }
+
+    async _onOptimizeClick(event, target) {
+        // Prevent default form submission if triggered by button inside form
+        event.preventDefault();
+
+        if (this.isOptimizing) return;
+
+        // Gather FormData using standard FormData API from the form element
+        const formData = new FormData(this.element);
+
+        // --- SCENES ---
+        let selectedSceneIds = formData.getAll("sceneIds"); // getAll returns array
+
+        // --- AUDIO ---
+        let selectedAudioIds = formData.getAll("audioIds");
+
+        // Filter based on active tab
+        if (this.tabState === "scenes") selectedAudioIds = [];
+        if (this.tabState === "audio") selectedSceneIds = [];
+
+        if (selectedSceneIds.length === 0 && selectedAudioIds.length === 0) {
+            return ui.notifications.warn("No items selected.");
+        }
+
+        const quality = parseFloat(formData.get("quality")) || 0.85;
+        const audioBitrate = parseInt(formData.get("audioBitrateAudio")) || 128000;
+
+        // Collect Objects
+        const targetScenes = selectedSceneIds.map(id => game.scenes.get(id)).filter(s => s);
+        // Map audio keys back to data objects
+        const targetAudio = selectedAudioIds.map(key => this.audioData.find(a => a.uniqueId === key)).filter(a => a);
+
+        this.isOptimizing = true;
+        this.orphanedFiles = [];
+        const totalItems = targetScenes.length + targetAudio.length;
+        this.progress = { value: 0, max: totalItems, label: "Starting..." };
+        this.render();
+
+        // Small wait to allow render to update UI
+        await new Promise(r => setTimeout(r, 100));
+
+        // Process Scenes
+        if (targetScenes.length > 0) {
+            await this._runSceneOptimization(targetScenes, quality);
+        }
+
+        // Process Audio
+        if (targetAudio.length > 0) {
+            await this._runAudioOptimization(targetAudio, audioBitrate);
+        }
+
+        this.isOptimizing = false;
+        this.progress.label = "Done!";
+        this.progress.value = totalItems;
+        this.render();
+    }
+
+    // Since we handle the optimize click manually, the submit handler might be redundant 
+    // but good to have if we change button type to submit
+    async _onSubmit(event, form, formData) {
+        // No-op or delegate to optimize
+        return;
+    }
+
+    // --- Logic Methods (Largely Unchanged) ---
 
     _analyzeScenes() {
         const scenes = game.scenes.contents;
@@ -130,98 +269,6 @@ class SceneOptimizer extends FormApplication {
             statusClass: statusClass,
             checked: checked
         });
-    }
-
-    activateListeners(html) {
-        super.activateListeners(html);
-        html.find('button[data-action="analyze"]').click(this._onAnalyze.bind(this));
-        html.find('button[data-action="optimize"]').click(this._onOptimizeClick.bind(this));
-        html.find('#select-all-scenes').change(this._onSelectAllScenes.bind(this));
-        html.find('#select-all-audio').change(this._onSelectAllAudio.bind(this));
-
-        // Slider Reactivity
-        html.find('#quality-slider').on('input change', (event) => {
-            html.find('#quality-display').text(event.target.value);
-        });
-
-        // Tabs are handled automatically by FormApplication defaultOptions structure
-    }
-
-    _onSelectAllScenes(event) {
-        const checked = event.currentTarget.checked;
-        const rows = this.element.find(".tab[data-tab='scenes'] .scene-row.unoptimized input[type='checkbox']");
-        rows.prop("checked", checked);
-    }
-
-    _onSelectAllAudio(event) {
-        const checked = event.currentTarget.checked;
-        const rows = this.element.find(".tab[data-tab='audio'] .scene-row.unoptimized input[type='checkbox']");
-        rows.prop("checked", checked);
-    }
-
-    async _onAnalyze() {
-        if (this.isOptimizing) return;
-        this.scenesData = this._analyzeScenes();
-        this.audioData = this._analyzeAudio();
-        this.render();
-    }
-
-    async _onOptimizeClick(event) {
-        event.preventDefault();
-        if (this.isOptimizing) return;
-        const form = this.element.find("form")[0];
-        const formData = new FormDataExtended(form).object;
-
-        // --- SCENES ---
-        let selectedSceneIds = formData.sceneIds;
-        if (!Array.isArray(selectedSceneIds) && selectedSceneIds) selectedSceneIds = [selectedSceneIds];
-        selectedSceneIds = selectedSceneIds || [];
-
-        // --- AUDIO ---
-        let selectedAudioIds = formData.audioIds;
-        if (!Array.isArray(selectedAudioIds) && selectedAudioIds) selectedAudioIds = [selectedAudioIds];
-        selectedAudioIds = selectedAudioIds || [];
-
-        // Filter based on active tab
-        const activeTab = this._tabs[0].active;
-        if (activeTab === "scenes") selectedAudioIds = [];
-        if (activeTab === "audio") selectedSceneIds = [];
-
-        if (selectedSceneIds.length === 0 && selectedAudioIds.length === 0) {
-            return ui.notifications.warn("No items selected.");
-        }
-
-        const quality = parseFloat(formData.quality) || 0.85;
-        const audioBitrate = parseInt(formData.audioBitrateAudio) || 128000;
-
-        // Collect Objects
-        const targetScenes = selectedSceneIds.map(id => game.scenes.get(id)).filter(s => s);
-        // Map audio keys back to data objects
-        const targetAudio = selectedAudioIds.map(key => this.audioData.find(a => a.uniqueId === key)).filter(a => a);
-
-        this.isOptimizing = true;
-        this.orphanedFiles = [];
-        const totalItems = targetScenes.length + targetAudio.length;
-        this.progress = { value: 0, max: totalItems, label: "Starting..." };
-        this.render();
-
-        // Small wait
-        await new Promise(r => setTimeout(r, 100));
-
-        // Process Scenes
-        if (targetScenes.length > 0) {
-            await this._runSceneOptimization(targetScenes, quality);
-        }
-
-        // Process Audio
-        if (targetAudio.length > 0) {
-            await this._runAudioOptimization(targetAudio, audioBitrate);
-        }
-
-        this.isOptimizing = false;
-        this.progress.label = "Done!";
-        this.progress.value = totalItems;
-        this.render();
     }
 
     async _runSceneOptimization(scenes, quality) {
@@ -339,8 +386,13 @@ class SceneOptimizer extends FormApplication {
     _updateProgress(value, label) {
         this.progress.value = value;
         if (label) this.progress.label = label;
-        this.element.find("progress").val(value);
-        if (label) this.element.find(".progress-container label").text(label);
+        // ApplicationV2 re-renders are efficient, so we can just render key parts or the whole thing.
+        // For smoother progress bars, direct DOM manipulation is still preferred to avoid full re-renders interrupting animations.
+        const progressBar = this.element.querySelector("progress");
+        const progressLabel = this.element.querySelector(".progress-container label");
+
+        if (progressBar) progressBar.value = value;
+        if (progressLabel && label) progressLabel.textContent = label;
     }
 
     /**
@@ -458,8 +510,6 @@ class SceneOptimizer extends FormApplication {
             img.src = src;
         });
     }
-
-    async _updateObject(event, formData) { }
 }
 
 Hooks.once("init", () => {
@@ -479,9 +529,16 @@ Hooks.on("getSceneDirectoryEntryContext", (html, options) => {
 
 Hooks.on("renderSceneDirectory", (app, html, data) => {
     if (!game.user.isGM) return;
-    const button = $(`<button class="scene-optimizer-btn"><i class="fas fa-magic"></i> Optimize Scenes</button>`);
-    button.click(() => {
+    const button = document.createElement("button");
+    button.classList.add("scene-optimizer-btn");
+    button.innerHTML = `<i class="fas fa-magic"></i> Optimize Scenes`;
+    button.onclick = () => {
         new SceneOptimizer().render(true);
-    });
-    html.find(".header-actions").append(button);
+    };
+
+    // Support both standard Foundry sidebar and potential V13 variations if class names change
+    const headerActions = html.querySelector(".header-actions");
+    if (headerActions) {
+        headerActions.appendChild(button);
+    }
 });
